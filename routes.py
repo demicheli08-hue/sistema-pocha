@@ -1,9 +1,8 @@
-from flask import Blueprint, render_template, request, redirect, url_for
+from flask import Blueprint, redirect, url_for
 from database import get_db_connection
 
 bp = Blueprint('main', __name__)
 
-# --- INICIO / RESUMEN ---
 @bp.route('/')
 def index():
     conn = get_db_connection()
@@ -11,68 +10,47 @@ def index():
     total_clientes = conn.execute('SELECT COUNT(*) FROM clientes').fetchone()[0]
     total_proveedores = conn.execute('SELECT COUNT(*) FROM proveedores').fetchone()[0]
     conn.close()
-    return render_template('index.html', total_productos=total_productos, total_clientes=total_clientes, total_proveedores=total_proveedores)
+    
+    return f"""
+    <div style="font-family: Arial; text-align: center; margin-top: 50px;">
+        <h1 style="color: #2c3e50;">🌿 Almacén Natural Pocha - Sistema Online 🚀</h1>
+        <p style="font-size: 18px; color: #555;">El sistema de gestión y control de stock está funcionando correctamente en la nube.</p>
+        <hr style="width: 50%; margin: 20px auto;">
+        <h3>📊 Resumen del Sistema:</h3>
+        <ul style="list-style: none; padding: 0; font-size: 16px;">
+            <li>📦 <b>Productos registrados:</b> {total_productos}</li>
+            <li>👥 <b>Clientes activos:</b> {total_clientes}</li>
+            <li>🚚 <b>Proveedores:</b> {total_proveedores}</li>
+        </ul>
+        <br>
+        <a href="/proveedores" style="padding: 10px 20px; background: #3498db; color: white; text-decoration: none; border-radius: 5px; margin-right: 10px;">Ver Proveedores</a>
+        <a href="/clientes" style="padding: 10px 20px; background: #2ecc71; color: white; text-decoration: none; border-radius: 5px;">Ver Clientes</a>
+    </div>
+    """
 
-
-# --- GESTIÓN DE PROVEEDORES ---
 @bp.route('/proveedores')
 def proveedores():
     conn = get_db_connection()
     provs = conn.execute('SELECT * FROM proveedores').fetchall()
     conn.close()
-    return render_template('proveedores.html', proveedores=provs)
+    
+    html = "<h2>Gestión de Proveedores</h2><table border='1' cellpadding='8' style='border-collapse: collapse;'><tr><th>ID</th><th>Nombre</th><th>Contacto</th><th>Teléfono</th></tr>"
+    for p in provs:
+        html += f"<tr><td>{p['id']}</td><td>{p['nombre']}</td><td>{p['contacto']}</td><td>{p['telefono']}</td></tr>"
+    html += "</table><br><a href='/'>← Volver al Inicio</a>"
+    return html
 
-@bp.route('/proveedor/nuevo', methods=['GET', 'POST'])
-def nuevo_proveedor():
-    if request.method == 'POST':
-        nombre = request.form['nombre']
-        contacto = request.form['contacto']
-        telefono = request.form['telefono']
-        conn = get_db_connection()
-        conn.execute('INSERT INTO proveedores (nombre, contacto, telefono) VALUES (?, ?, ?)', (nombre, contacto, telefono))
-        conn.commit()
-        conn.close()
-        return redirect(url_for('main.proveedores'))
-    return render_template('nuevo_proveedor.html')
-
-@bp.route('/proveedor/eliminar/<int:id>')
-def eliminar_proveedor(id):
-    conn = get_db_connection()
-    conn.execute('DELETE FROM proveedores WHERE id = ?', (id,))
-    conn.commit()
-    conn.close()
-    return redirect(url_for('main.proveedores'))
-
-
-# --- GESTIÓN DE CLIENTES ---
 @bp.route('/clientes')
 def clientes():
     conn = get_db_connection()
     clis = conn.execute('SELECT * FROM clientes').fetchall()
     conn.close()
-    return render_template('clientes.html', clientes=clis)
-
-@bp.route('/cliente/nuevo', methods=['GET', 'POST'])
-def nuevo_cliente():
-    if request.method == 'POST':
-        nombre = request.form['nombre']
-        telefono = request.form['telefono']
-        saldo = request.form.get('saldo_cta_cte', 0.0)
-        conn = get_db_connection()
-        conn.execute('INSERT INTO clientes (nombre, telefono, saldo_cta_cte) VALUES (?, ?, ?)', (nombre, telefono, saldo))
-        conn.commit()
-        conn.close()
-        return redirect(url_for('main.clientes'))
-    return render_template('nuevo_cliente.html')
-
-@bp.route('/cliente/eliminar/<int:id>')
-def eliminar_cliente(id):
-    conn = get_db_connection()
-    conn.execute('DELETE FROM clientes WHERE id = ?', (id,))
-    conn.commit()
-    conn.close()
-    return redirect(url_for('main.clientes'))
-
+    
+    html = "<h2>Gestión de Clientes</h2><table border='1' cellpadding='8' style='border-collapse: collapse;'><tr><th>ID</th><th>Nombre</th><th>Teléfono</th><th>Saldo Cta. Cte.</th></tr>"
+    for c in clis:
+        html += f"<tr><td>{c['id']}</td><td>{c['nombre']}</td><td>{c['telefono']}</td><td>${c['saldo_cta_cte']}</td></tr>"
+    html += "</table><br><a href='/'>← Volver al Inicio</a>"
+    return html
 
 def register_routes(app):
     app.register_blueprint(bp)
