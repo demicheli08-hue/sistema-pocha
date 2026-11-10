@@ -3,6 +3,17 @@ from database import get_db_connection
 
 bp = Blueprint('main', __name__)
 
+# --- INICIO / RESUMEN ---
+@bp.route('/')
+def index():
+    conn = get_db_connection()
+    total_productos = conn.execute('SELECT COUNT(*) FROM productos').fetchone()[0]
+    total_clientes = conn.execute('SELECT COUNT(*) FROM clientes').fetchone()[0]
+    total_proveedores = conn.execute('SELECT COUNT(*) FROM proveedores').fetchone()[0]
+    conn.close()
+    return render_template('index.html', total_productos=total_productos, total_clientes=total_clientes, total_proveedores=total_proveedores)
+
+
 # --- GESTIÓN DE PROVEEDORES ---
 @bp.route('/proveedores')
 def proveedores():
@@ -61,3 +72,7 @@ def eliminar_cliente(id):
     conn.commit()
     conn.close()
     return redirect(url_for('main.clientes'))
+
+
+def register_routes(app):
+    app.register_blueprint(bp)
