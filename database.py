@@ -67,22 +67,52 @@ def init_db():
     ''')
     cursor.execute("INSERT OR IGNORE INTO config (clave, valor) VALUES ('margen_general', '30')")
     
-    # --- AUTO-CARGA DE DATOS SI LA TABLA ESTÁ VACÍA ---
+    # --- AUTO-CARGA DE DATOS REALES DEL EXCEL SI LA TABLA ESTÁ VACÍA ---
     cursor.execute("SELECT COUNT(*) FROM productos")
     if cursor.fetchone()[0] == 0:
-        # Proveedores de ejemplo
-        cursor.execute("INSERT INTO proveedores (nombre, contacto, telefono) VALUES ('Natural Distribuciones', 'Carlos', '1122334455')")
-        cursor.execute("INSERT INTO proveedores (nombre, contacto, telefono) VALUES ('Alimentos Andinos', 'Lucía', '1199887766')")
+        # Proveedores del Excel
+        cursor.execute("INSERT INTO proveedores (nombre, contacto, telefono) VALUES ('BIOSALUD', 'General', '1100000001')")
+        cursor.execute("INSERT INTO proveedores (nombre, contacto, telefono) VALUES ('PECANES ARGENTINOS', 'General', '1100000002')")
+        cursor.execute("INSERT INTO proveedores (nombre, contacto, telefono) VALUES ('NUTRIMIX', 'General', '1100000003')")
+        cursor.execute("INSERT INTO proveedores (nombre, contacto, telefono) VALUES ('CHAYA FRUTOS SECOS', 'General', '1100000004')")
         
         # Clientes de ejemplo
-        cursor.execute("INSERT INTO clientes (nombre, telefono, saldo_cta_cte) VALUES ('María Gómez', '1144332211', 0.0)")
-        cursor.execute("INSERT INTO clientes (nombre, telefono, saldo_cta_cte) VALUES ('Juan Pérez', '1155667788', 1500.0)")
+        cursor.execute("INSERT INTO clientes (nombre, telefono, saldo_cta_cte) VALUES ('Romina', '1144332211', 0.0)")
+        cursor.execute("INSERT INTO clientes (nombre, telefono, saldo_cta_cte) VALUES ('María Gómez', '1155667788', 1500.0)")
         
-        # Productos de ejemplo
-        cursor.execute("INSERT INTO productos (nombre, proveedor_id, costo, margen_individual, stock, stock_minimo) VALUES ('Almendras x 100g', 1, 1200.0, NULL, 25.0, 5.0)")
-        cursor.execute("INSERT INTO productos (nombre, proveedor_id, costo, margen_individual, stock, stock_minimo) VALUES ('Nueces Peladas x 250g', 1, 2400.0, 35.0, 15.0, 4.0)")
-        cursor.execute("INSERT INTO productos (nombre, proveedor_id, costo, margen_individual, stock, stock_minimo) VALUES ('Aceite de Coco Orgánico', 2, 4500.0, NULL, 10.0, 3.0)")
-        cursor.execute("INSERT INTO productos (nombre, proveedor_id, costo, margen_individual, stock, stock_minimo) VALUES ('Azúcar Mascabo x 1kg', 2, 1100.0, 25.0, 30.0, 6.0)")
+        # Productos extraídos del Excel (nombre, proveedor_id, costo, margen_individual, stock, stock_minimo)
+        productos_excel = [
+            ("Chía (1kg)", 1, 7458.0, 75.0, 10.0, 3.0),
+            ("Lino (1kg)", 2, 2100.0, 75.0, 15.0, 3.0),
+            ("Lino Dorado (1kg)", 3, 2550.0, 75.0, 10.0, 3.0),
+            ("Sésamo Blanco", 1, 6171.0, 75.0, 8.0, 2.0),
+            ("Sésamo Integral", 1, 1906.0, 75.0, 12.0, 3.0),
+            ("Sésamo Negro", 1, 7874.0, 75.0, 5.0, 2.0),
+            ("Urucum", 1, 2166.0, 75.0, 10.0, 2.0),
+            ("Trigo Sarraceno", 1, 4711.0, 75.0, 6.0, 2.0),
+            ("Quinoa Mix (1kg)", 1, 8030.0, 75.0, 10.0, 3.0),
+            ("Girasol", 1, 3500.0, 75.0, 15.0, 4.0),
+            ("Calabaza", 1, 11500.0, 75.0, 8.0, 2.0),
+            ("Mix de Semillas", 1, 4168.0, 75.0, 20.0, 5.0),
+            ("Amapola", 1, 13890.0, 75.0, 5.0, 2.0),
+            ("Amaranto", 1, 9027.0, 75.0, 7.0, 2.0),
+            ("Psyllium", 1, 14453.0, 75.0, 4.0, 2.0),
+            ("Mix Tradicional (500g)", 4, 4800.0, 30.0, 15.0, 4.0),
+            ("Mix Tradicional c/ Banana (500g)", 4, 6500.0, 30.0, 12.0, 3.0),
+            ("Mix Premium (500g)", 4, 8300.0, 30.0, 10.0, 3.0),
+            ("Nueces (500g)", 4, 8000.0, 30.0, 10.0, 3.0),
+            ("Almendras (500g)", 4, 10500.0, 30.0, 15.0, 4.0),
+            ("Arándanos Deshidratados (500g)", 4, 10755.0, 30.0, 10.0, 3.0),
+            ("Ciruelas Deshidratadas (500g)", 4, 4500.0, 30.0, 12.0, 3.0),
+            ("Castañas de Cajú (200g)", 4, 4200.0, 30.0, 10.0, 3.0),
+            ("Granola Crocante (500g)", 4, 8200.0, 30.0, 8.0, 2.0)
+        ]
+        
+        for p in productos_excel:
+            cursor.execute("""
+                INSERT INTO productos (nombre, proveedor_id, costo, margen_individual, stock, stock_minimo)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, p)
 
     conn.commit()
     conn.close()
