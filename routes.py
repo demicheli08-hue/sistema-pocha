@@ -1,6 +1,7 @@
 from flask import render_template_string, request, redirect, url_for
 import datetime
 from database import get_db_connection
+from ventas import registrar_rutas_ventas
 
 def register_routes(app):
     
@@ -382,148 +383,6 @@ def register_routes(app):
         conn.close()
         return redirect(url_for('productos'))
 
-    @app.route('/ventas', methods=['GET', 'POST'])
-    def ventas():
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT valor FROM config WHERE clave = 'margen_general'")
-        row_m = cursor.fetchone()
-        margen_gral = float(row_m[0]) if row_m else 30.0
-        
-        cursor.execute("SELECT id, nombre, costo, margen_individual, stock FROM productos WHERE stock > 0")
-        prods_raw = cursor.fetchall()
-        cursor.execute("SELECT id, nombre FROM clientes")
-        clientes = cursor.fetchall()
-        
-        if request.method == 'POST':
-            cliente_id = request.form.get('cliente_id') or None
-            tipo_pago = request.form.get('tipo_pago')
-            productos_ids = request.form.getlist('producto_id[]')
-            cantidades = request.form.getlist('cantidad[]')
-            total_venta = 0.0
-            items_a_comprar = []
-            
-            for pid_str, cant_str in zip(productos_ids, cantidades):
-                if not pid_str or not cant_str:
-                    continue
-                pid = int(pid_str)
-                cant = float(cant_str)
-                cursor.execute("SELECT costo, margen_individual, stock FROM productos WHERE id = ?", (pid,))
-                res_p = cursor.fetchone()
-                if not res_p:
-                    continue
-                costo, margen_ind, stock_actual = res_p
-                margen = margen_ind if margen_ind is not None else margen_gral
-                precio_unit = costo * (1 + margen / 100.0)
-                subtotal = precio_unit * cant
-                total_venta += subtotal
-                items_a_comprar.append((pid, cant, precio_unit, subtotal))
-                
-            if items_a_comprar:
-                fecha_actual = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                cursor.execute("INSERT INTO ventas (fecha, cliente_id, tipo_pago, total) VALUES (?, ?, ?, ?)",
-                               (fecha_actual, cliente_id, tipo_pago, total_venta))
-                venta_id = cursor.lastrowid
-                for pid, cant, p_unit, sub in items_a_comprar:
-                    cursor.execute("INSERT INTO detalle_ventas (venta_id, producto_id, cantidad, precio_unitario, subtotal) VALUES (?, ?, ?, ?, ?)",
-                                   (venta_id, pid, cant, p_unit, sub))
-                    cursor.execute("UPDATE productos SET stock = stock - ? WHERE id = ?", (cant, pid))
-                    
-                if tipo_pago == 'Cuenta Corriente' and cliente_id:
-                    cursor.execute("SELECT saldo_cta_cte FROM clientes WHERE id = ?", (cliente_id,))
-                    s_ant = cursor.fetchone()[0] or 0.0
-                    nuevo_s = s_ant + total_venta
-                    cursor.execute("UPDATE clientes SET saldo_cta_cte = ? WHERE id = ?", (nuevo_s, cliente_id))
-                    
-                conn.commit()
-            conn.close()
-            return redirect(url_for('ventas'))
-            
-        options_prod = "".join([f'<option value="{p[0]}">{p[1]} (Stock: {p[4]})</option>' for p in prods_raw])
-        options_cli = "".join([f'<option value="{c[0]}">{c[1]}</option>' for c in clientes])
-        
-        content = f'''
-        <h2 class="mb-4"><i class="fas fa-cash-register me-2"></i> Módulo de Ventas / Caja</h2>
-        <div class="row">
-            <div class="col-md-8">
-                <div class="card shadow-sm p-4 bg-white">
-                    <form action="/ventas" method="POST" id="formVenta">
-                        <h5 class="mb-3">Detalle de la Venta</h5>
-                        <div id="itemsContainer">
-                            <div class="row mb-3 item-row">
-                                <div class="col-md-6">
-                                    <label class="form-label">Producto</label>
-                                    <select name="producto_id[]" class="form-select" required>
-                                        <option value="">Seleccione producto...</option>
-                                        {options_prod}
-                                    </select>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label">Cantidad</label>
-                                    <input type="number" step="0.1" name="cantidad[]" class="form-control" value="1" required>
-                                </div>
-                                <div class="col-md-2 d-flex align-items-end">
-                                    <button type="button" class="btn btn-outline-danger w-100 remove-row"><i class="fas fa-trash"></i></button>
-                                </div>
-                            </div>
-                        </div>
-                        <button type="button" id="addRow" class="btn btn-outline-secondary mb-3"><i class="fas fa-plus me-1"></i> Agregar otro producto</button>
-                        <hr>
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Forma de Pago</label>
-                                <select name="tipo_pago" id="tipoPago" class="form-select" required>
-                                    <option value="Efectivo">Efectivo</option>
-                                    <option value="Tarjeta Débito">Tarjeta Débito</option>
-                                    <option value="Tarjeta Crédito">Tarjeta Crédito</option>
-                                    <option value="Transferencia">Transferencia</option>
-                                    <option value="Cuenta Corriente">Cuenta Corriente (Fiado)</option>
-                                </select>
-                            </div>
-                            <div class="col-md-6 mb-3" id="divCliente" style="display:none;">
-                                <label class="form-label">Cliente (Cuenta Corriente)</label>
-                                <select name="cliente_id" class="form-select">
-                                    <option value="">Seleccione cliente...</option>
-                                    {options_cli}
-                                </select>
-                            </div>
-                        </div>
-                        <button type="submit" class="btn btn-success btn-lg w-100 mt-3"><i class="fas fa-check-circle me-2"></i> Finalizar y Cobrar</button>
-                    </form>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card shadow-sm p-3 bg-light">
-                    <h5>Consejos de Caja</h5>
-                    <p class="text-muted small">Al finalizar la venta, el stock se descuenta automáticamente y se actualizan las cuentas corrientes si corresponde.</p>
-                </div>
-            </div>
-        </div>
-        <script>
-            document.getElementById('addRow').addEventListener('click', function() {{
-                const container = document.getElementById('itemsContainer');
-                const firstRow = container.querySelector('.item-row');
-                const newRow = firstRow.cloneNode(true);
-                newRow.querySelector('input').value = '1';
-                container.appendChild(newRow);
-            }});
-            document.addEventListener('click', function(e) {{
-                if (e.target.closest('.remove-row')) {{
-                    const rows = document.querySelectorAll('.item-row');
-                    if (rows.length > 1) {{
-                        e.target.closest('.item-row').remove();
-                    }}
-                }}
-            }});
-            document.getElementById('tipoPago').addEventListener('change', function() {{
-                const divCliente = document.getElementById('divCliente');
-                divCliente.style.display = (this.value === 'Cuenta Corriente') ? 'block' : 'none';
-            }});
-        </script>
-        '''
-        conn.close()
-        return render_template_string(base_layout('ventas', content))
-
     @app.route('/clientes', methods=['GET', 'POST'])
     def clientes():
         conn = get_db_connection()
@@ -834,3 +693,6 @@ def register_routes(app):
         conn.commit()
         conn.close()
         return redirect(url_for('proveedores'))
+
+    # Registramos las rutas de ventas desde el nuevo módulo separado
+    registrar_rutas_ventas(app, base_layout)
