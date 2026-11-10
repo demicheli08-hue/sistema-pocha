@@ -208,6 +208,8 @@ def register_routes(app):
             '''
             
             val_margen_ind_str = str(margen_ind) if margen_ind is not None else ''
+            options_prov_edit = "".join([f'<option value="{p[0]}" {"selected" if p[0] == prov_id else ""}>{p[1]}</option>' for p in proveedores])
+            
             modales += f'''
             <div class="modal fade" id="editModal{pid}" tabindex="-1">
                 <div class="modal-dialog">
@@ -218,6 +220,17 @@ def register_routes(app):
                                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                             </div>
                             <div class="modal-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Nombre del Producto</label>
+                                    <input type="text" name="nombre" class="form-control" value="{pnombre}" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Proveedor</label>
+                                    <select name="proveedor_id" class="form-select">
+                                        <option value="">Seleccione proveedor...</option>
+                                        {options_prov_edit}
+                                    </select>
+                                </div>
                                 <div class="mb-3">
                                     <label class="form-label">Costo (\$)</label>
                                     <input type="number" step="0.01" name="costo" class="form-control" value="{costo}" required>
@@ -342,6 +355,8 @@ def register_routes(app):
 
     @app.route('/editar_producto/<int:id>', methods=['POST'])
     def editar_producto(id):
+        nombre = request.form['nombre']
+        prov_id = request.form['proveedor_id'] or None
         costo = float(request.form['costo'])
         margen_ind = request.form['margen_individual']
         margen_ind = float(margen_ind) if margen_ind != '' else None
@@ -351,9 +366,9 @@ def register_routes(app):
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            UPDATE productos SET costo = ?, margen_individual = ?, stock = ?, stock_minimo = ?
+            UPDATE productos SET nombre = ?, proveedor_id = ?, costo = ?, margen_individual = ?, stock = ?, stock_minimo = ?
             WHERE id = ?
-        ''', (costo, margen_ind, stock, stock_min, id))
+        ''', (nombre, prov_id, costo, margen_ind, stock, stock_min, id))
         conn.commit()
         conn.close()
         return redirect(url_for('productos'))
@@ -538,7 +553,8 @@ def register_routes(app):
                 <td>{ctel or '-'}</td>
                 <td><span class="fs-5 {cls_saldo}">{txt_saldo}</span></td>
                 <td>
-                    <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#pagoModal{cid}"><i class="fas fa-money-bill-wave me-1"></i> Registrar Pago</button>
+                    <button class="btn btn-sm btn-outline-success me-1" data-bs-toggle="modal" data-bs-target="#pagoModal{cid}"><i class="fas fa-money-bill-wave me-1"></i> Registrar Pago</button>
+                    <button class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#editClienteModal{cid}"><i class="fas fa-edit"></i></button>
                     <a href="/eliminar_cliente/{cid}" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Eliminar cliente?');"><i class="fas fa-trash"></i></a>
                 </td>
             </tr>
@@ -562,6 +578,33 @@ def register_routes(app):
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                                 <button type="submit" class="btn btn-success">Acreditar Pago</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal fade" id="editClienteModal{cid}" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <form action="/editar_cliente/{cid}" method="POST">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Editar Cliente: {cnombre}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Nombre y Apellido</label>
+                                    <input type="text" name="nombre" class="form-control" value="{cnombre}" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Teléfono</label>
+                                    <input type="text" name="telefono" class="form-control" value="{ctel or ''}">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                <button type="submit" class="btn btn-primary">Guardar Cambios</button>
                             </div>
                         </form>
                     </div>
@@ -632,15 +675,21 @@ def register_routes(app):
         conn.close()
         return redirect(url_for('clientes'))
 
+    @app.route('/editar_cliente/<int:id>', methods=['POST'])
+    def editar_cliente(id):
+        nombre = request.form['nombre']
+        telefono = request.form['telefono']
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE clientes SET nombre = ?, telefono = ? WHERE id = ?", (nombre, telefono, id))
+        conn.commit()
+        conn.close()
+        return redirect(url_for('clientes'))
+
     @app.route('/eliminar_cliente/<int:id>')
     def eliminar_cliente(id):
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT saldo_cta_cte FROM clientes WHERE id = ?", (id,))
-        res = cursor.fetchone()
-        if res and res[0] > 0:
-            # Opcional: Permitir eliminar igual o advertir
-            pass
         cursor.execute("DELETE FROM clientes WHERE id = ?", (id,))
         conn.commit()
         conn.close()
@@ -663,7 +712,53 @@ def register_routes(app):
         provs = cursor.fetchall()
         conn.close()
         
-        filas_prov = "".join([f'<tr><td><strong>{p[1]}</strong></td><td>{p[2] or "-"}</td><td>{p[3] or "-"}</td><td><a href="/eliminar_proveedor/{p[0]}" class="btn btn-sm btn-outline-danger" onclick="return confirm(\'¿Eliminar proveedor?\");"><i class="fas fa-trash"></i></a></td></tr>' for p in provs])
+        filas_prov = ""
+        modales_prov = ""
+        for p in provs:
+            pid, pnombre, pcontacto, ptel = p
+            filas_prov += f'''
+            <tr>
+                <td><strong>{pnombre}</strong></td>
+                <td>{pcontacto or "-"}</td>
+                <td>{ptel or "-"}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#editProvModal{pid}"><i class="fas fa-edit"></i></button>
+                    <a href="/eliminar_proveedor/{pid}" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Eliminar proveedor?');"><i class="fas fa-trash"></i></a>
+                </td>
+            </tr>
+            '''
+            modales_prov += f'''
+            <div class="modal fade" id="editProvModal{pid}" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <form action="/editar_proveedor/{pid}" method="POST">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Editar Proveedor: {pnombre}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Nombre del Proveedor</label>
+                                    <input type="text" name="nombre" class="form-control" value="{pnombre}" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Persona de Contacto</label>
+                                    <input type="text" name="contacto" class="form-control" value="{pcontacto or ''}">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Teléfono</label>
+                                    <input type="text" name="telefono" class="form-control" value="{ptel or ''}">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            '''
         
         content = f'''
         <div class="d-flex justify-content-between align-items-center mb-4">
@@ -685,6 +780,7 @@ def register_routes(app):
                 </tbody>
             </table>
         </div>
+        {modales_prov}
         <div class="modal fade" id="modalNuevoProv" tabindex="-1">
             <div class="modal-dialog">
                 <div class="modal-content">
@@ -717,6 +813,18 @@ def register_routes(app):
         </div>
         '''
         return render_template_string(base_layout('proveedores', content))
+
+    @app.route('/editar_proveedor/<int:id>', methods=['POST'])
+    def editar_proveedor(id):
+        nombre = request.form['nombre']
+        contacto = request.form['contacto']
+        telefono = request.form['telefono']
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE proveedores SET nombre = ?, contacto = ?, telefono = ? WHERE id = ?", (nombre, contacto, telefono, id))
+        conn.commit()
+        conn.close()
+        return redirect(url_for('proveedores'))
 
     @app.route('/eliminar_proveedor/<int:id>')
     def eliminar_proveedor(id):
