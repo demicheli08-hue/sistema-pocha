@@ -78,17 +78,12 @@ def init_db():
         cursor.execute("INSERT INTO clientes (nombre, telefono, saldo_cta_cte) VALUES ('María Gómez', '1144332211', 0.0)")
         cursor.execute("INSERT INTO clientes (nombre, telefono, saldo_cta_cte) VALUES ('Juan Pérez', '1155667788', 1500.0)")
         
-        # Productos de ejemplo (con costo, margen individual o NULL para usar el general, stock)
+        # Productos de ejemplo
         cursor.execute("INSERT INTO productos (nombre, proveedor_id, costo, margen_individual, stock, stock_minimo) VALUES ('Almendras x 100g', 1, 1200.0, NULL, 25.0, 5.0)")
         cursor.execute("INSERT INTO productos (nombre, proveedor_id, costo, margen_individual, stock, stock_minimo) VALUES ('Nueces Peladas x 250g', 1, 2400.0, 35.0, 15.0, 4.0)")
         cursor.execute("INSERT INTO productos (nombre, proveedor_id, costo, margen_individual, stock, stock_minimo) VALUES ('Aceite de Coco Orgánico', 2, 4500.0, NULL, 10.0, 3.0)")
         cursor.execute("INSERT INTO productos (nombre, proveedor_id, costo, margen_individual, stock, stock_minimo) VALUES ('Azúcar Mascabo x 1kg', 2, 1100.0, 25.0, 30.0, 6.0)")
 
-    conn.commit()
-    conn.close()
-
-def get_db_connection():
-    return sqlite3.connect(DB_NAME)ute("INSERT OR IGNORE INTO config (clave, valor) VALUES ('margen_general', '30')")
     conn.commit()
     conn.close()
 
