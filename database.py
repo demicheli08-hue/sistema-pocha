@@ -6,8 +6,8 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 
 def get_db_connection():
     if DATABASE_URL:
-        # Conexión a PostgreSQL en la nube (Render)
-        return psycopg2.connect(DATABASE_URL, sslmode='binary')
+        # Conexión a PostgreSQL en la nube (Render) sin el parámetro inválido
+        return psycopg2.connect(DATABASE_URL)
     else:
         # Conexión local de respaldo por si lo ejecutas en tu PC
         import sqlite3
