@@ -69,28 +69,43 @@ def register_routes(app):
     def index():
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM productos")
-        total_prod = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM productos WHERE stock <= stock_minimo")
-        stock_bajo = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM clientes WHERE saldo_cta_cte > 0")
-        clientes_deuda = cursor.fetchone()[0]
-        
         try:
-            cursor.execute("SELECT SUM(total) FROM ventas WHERE fecha LIKE ?", (datetime.date.today().strftime('%Y-%m-%d') + '%',))
-            ventas_hoy = cursor.fetchone()[0] or 0.0
-        except Exception:
-            ventas_hoy = 0.0
+            cursor.execute("SELECT COUNT(*) FROM productos")
+            total_prod = cursor.fetchone()[0]
             
-        cursor.execute("SELECT valor FROM config WHERE clave = 'margen_general'")
-        row_m = cursor.fetchone()
-        margen_gral = row_m[0] if row_m else '30'
-        conn.close()
+            cursor.execute("SELECT COUNT(*) FROM productos WHERE stock <= stock_minimo")
+            stock_bajo = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(*) FROM clientes WHERE saldo_cta_cte > 0")
+            clientes_deuda = cursor.fetchone()[0]
+            
+            try:
+                hoy = datetime.date.today().strftime('%Y-%m-%d')
+                cursor.execute("SELECT SUM(total) FROM ventas WHERE fecha LIKE %s", (f"{hoy}%",))
+                row_v = cursor.fetchone()
+                ventas_hoy = row_v[0] if row_v and row_v[0] else 0.0
+            except Exception:
+                conn.rollback()
+                ventas_hoy = 0.0
+                
+            cursor.execute("SELECT valor FROM config WHERE clave = 'margen_general'")
+            row_m = cursor.fetchone()
+            margen_gral = row_m[0] if row_m else '30'
+            
+        except Exception as e:
+            conn.rollback()
+            total_prod = 0
+            stock_bajo = 0
+            clientes_deuda = 0
+            ventas_hoy = 0.0
+            margen_gral = '30'
+        finally:
+            conn.close()
         
         content = f'''
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2>Panel de Control Almacén Natural</h2>
-            <span class="badge bg-success fs-6">Sistema Local Activo</span>
+            <span class="badge bg-success fs-6">Sistema Cloud Activo (PostgreSQL)</span>
         </div>
         <div class="row g-4 mb-4">
             <div class="col-md-3">
@@ -153,9 +168,13 @@ def register_routes(app):
         nuevo_margen = request.form['margen_general']
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("UPDATE config SET valor = ? WHERE clave = 'margen_general'", (nuevo_margen,))
-        conn.commit()
-        conn.close()
+        try:
+            cursor.execute("UPDATE config SET valor = %s WHERE clave = 'margen_general'", (nuevo_margen,))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            conn.close()
         return redirect(url_for('index'))
 
     @app.route('/clientes', methods=['GET', 'POST'])
@@ -165,9 +184,13 @@ def register_routes(app):
         if request.method == 'POST':
             nombre = request.form['nombre']
             telefono = request.form['telefono']
-            cursor.execute("INSERT INTO clientes (nombre, telefono, saldo_cta_cte) VALUES (?, ?, 0.0)", (nombre, telefono))
-            conn.commit()
-            conn.close()
+            try:
+                cursor.execute("INSERT INTO clientes (nombre, telefono, saldo_cta_cte) VALUES (%s, %s, 0.0)", (nombre, telefono))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+            finally:
+                conn.close()
             return redirect(url_for('clientes'))
             
         cursor.execute("SELECT id, nombre, telefono, saldo_cta_cte FROM clientes")
@@ -301,12 +324,16 @@ def register_routes(app):
         monto = float(request.form['monto_pago'])
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT saldo_cta_cte FROM clientes WHERE id = ?", (id,))
-        s_actual = cursor.fetchone()[0] or 0.0
-        nuevo_saldo = s_actual - monto
-        cursor.execute("UPDATE clientes SET saldo_cta_cte = ? WHERE id = ?", (nuevo_saldo, id))
-        conn.commit()
-        conn.close()
+        try:
+            cursor.execute("SELECT saldo_cta_cte FROM clientes WHERE id = %s", (id,))
+            s_actual = cursor.fetchone()[0] or 0.0
+            nuevo_saldo = s_actual - monto
+            cursor.execute("UPDATE clientes SET saldo_cta_cte = %s WHERE id = %s", (nuevo_saldo, id))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            conn.close()
         return redirect(url_for('clientes'))
 
     @app.route('/editar_cliente/<int:id>', methods=['POST'])
@@ -315,18 +342,26 @@ def register_routes(app):
         telefono = request.form['telefono']
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("UPDATE clientes SET nombre = ?, telefono = ? WHERE id = ?", (nombre, telefono, id))
-        conn.commit()
-        conn.close()
+        try:
+            cursor.execute("UPDATE clientes SET nombre = %s, telefono = %s WHERE id = %s", (nombre, telefono, id))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            conn.close()
         return redirect(url_for('clientes'))
 
     @app.route('/eliminar_cliente/<int:id>')
     def eliminar_cliente(id):
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM clientes WHERE id = ?", (id,))
-        conn.commit()
-        conn.close()
+        try:
+            cursor.execute("DELETE FROM clientes WHERE id = %s", (id,))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            conn.close()
         return redirect(url_for('clientes'))
 
     # Registrar sub-módulos
