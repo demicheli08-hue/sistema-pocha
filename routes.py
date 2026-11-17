@@ -123,7 +123,7 @@ def register_routes(app):
             <div class="col-md-3">
                 <div class="card card-stats border-warning shadow-sm p-3 bg-white" style="border-left-color: #f1c40f;">
                     <h6 class="text-muted">Ventas de Hoy</h6>
-                    <h3>\${ventas_hoy:.2f}</h3>
+                    <h3>${ventas_hoy:.2f}</h3>
                 </div>
             </div>
             <div class="col-md-3">
@@ -195,19 +195,32 @@ def register_routes(app):
             
         cursor.execute("SELECT id, nombre, telefono, saldo_cta_cte FROM clientes")
         clientes_list = cursor.fetchall()
-        conn.close()
         
         filas_cli = ""
         modales_cli = ""
         for c in clientes_list:
             cid, cnombre, ctel, csaldo = c
-            txt_saldo = f"\${csaldo:.2f}"
+            
+            try:
+                cursor.execute("SELECT SUM(total) FROM ventas WHERE cliente_id = %s AND tipo_pago = 'Cuenta Corriente'", (cid,))
+                row_d = cursor.fetchone()
+                debe = row_d[0] if row_d and row_d[0] else 0.0
+            except Exception:
+                debe = 0.0
+                
+            haber = max(0.0, debe - csaldo) if debe > csaldo else 0.0
+            
+            txt_debe = f"${debe:.2f}"
+            txt_haber = f"${haber:.2f}"
+            txt_saldo = f"${csaldo:.2f}"
             cls_saldo = "text-danger fw-bold" if csaldo > 0 else "text-success"
             
             filas_cli += f'''
             <tr>
                 <td><strong>{cnombre}</strong></td>
                 <td>{ctel or '-'}</td>
+                <td><span class="text-primary">{txt_debe}</span></td>
+                <td><span class="text-success">{txt_haber}</span></td>
                 <td><span class="fs-5 {cls_saldo}">{txt_saldo}</span></td>
                 <td>
                     <button class="btn btn-sm btn-outline-success me-1" data-bs-toggle="modal" data-bs-target="#pagoModal{cid}"><i class="fas fa-money-bill-wave me-1"></i> Registrar Pago</button>
@@ -226,9 +239,9 @@ def register_routes(app):
                                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                             </div>
                             <div class="modal-body">
-                                <p>Saldo Actual: <strong>\${csaldo:.2f}</strong></p>
+                                <p>Saldo Actual Pendiente: <strong>${csaldo:.2f}</strong></p>
                                 <div class="mb-3">
-                                    <label class="form-label">Monto a Abonar (\$)</label>
+                                    <label class="form-label">Monto a Abonar ($)</label>
                                     <input type="number" step="0.01" name="monto_pago" class="form-control" required>
                                 </div>
                             </div>
@@ -269,6 +282,8 @@ def register_routes(app):
             </div>
             '''
             
+        conn.close()
+        
         content = f'''
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h2>Gestión de Clientes & Cuentas Corrientes</h2>
@@ -280,7 +295,9 @@ def register_routes(app):
                     <tr>
                         <th>Cliente</th>
                         <th>Teléfono</th>
-                        <th>Saldo Cuenta Corriente</th>
+                        <th>Debe (Total Consumido)</th>
+                        <th>Haber (Total Pagado)</th>
+                        <th>Saldo Actual (Subtotal)</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
