@@ -4,11 +4,11 @@ from database import get_db_connection
 productos_bp = Blueprint('productos_bp', __name__)
 
 def registrar_rutas_productos(app, base_layout):
-
     @productos_bp.route('/productos')
     def productos():
         conn = get_db_connection()
         cursor = conn.cursor()
+        
         cursor.execute("SELECT valor FROM config WHERE clave = 'margen_general'")
         row_m = cursor.fetchone()
         margen_gral = float(row_m[0]) if row_m and row_m[0] else 30.0
@@ -45,9 +45,9 @@ def registrar_rutas_productos(app, base_layout):
             <tr class="{tr_class}">
                 <td><strong>{pnombre}</strong></td>
                 <td>{prov_txt}</td>
-                <td>\${costo:.2f}</td>
+                <td>${costo:.2f}</td>
                 <td>{margen_aplicado}% {badge_margen}</td>
-                <td><strong>\${precio_venta:.2f}</strong></td>
+                <td><strong>${precio_venta:.2f}</strong></td>
                 <td>{stock}</td>
                 <td>{estado_stock}</td>
                 <td>
@@ -57,7 +57,7 @@ def registrar_rutas_productos(app, base_layout):
             </tr>
             '''
             
-            val_margen_ind_str = str(margen_ind) if margen_ind is not None else ''
+            val_margen_ind_str = str(margen_ind) if margen_ind is not None else ""
             options_prov_edit = "".join([f'<option value="{p[0]}" {"selected" if p[0] == prov_id else ""}>{p[1]}</option>' for p in proveedores])
             
             modales += f'''
@@ -82,7 +82,7 @@ def registrar_rutas_productos(app, base_layout):
                                     </select>
                                 </div>
                                 <div class="mb-3">
-                                    <label class="form-label">Costo (\$)</label>
+                                    <label class="form-label">Costo ($)</label>
                                     <input type="number" step="0.01" name="costo" class="form-control" value="{costo}" required>
                                 </div>
                                 <div class="mb-3">
@@ -107,8 +107,8 @@ def registrar_rutas_productos(app, base_layout):
                 </div>
             </div>
             '''
-
-        options_prov = "".join([f'<option value="{p[0]}">{p[1]}</option>' for p in proveedores]) if proveedores else ''
+            
+        options_prov = "".join([f'<option value="{p[0]}">{p[1]}</option>' for p in proveedores]) if proveedores else ""
         
         content = f'''
         <div class="d-flex justify-content-between align-items-center mb-4">
@@ -156,7 +156,7 @@ def registrar_rutas_productos(app, base_layout):
                                 </select>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Precio Costo (\$)</label>
+                                <label class="form-label">Precio Costo ($)</label>
                                 <input type="number" step="0.01" name="costo" class="form-control" required>
                             </div>
                             <div class="mb-3">
@@ -189,18 +189,22 @@ def registrar_rutas_productos(app, base_layout):
         prov_id = request.form['proveedor_id'] or None
         costo = float(request.form['costo'])
         margen_ind = request.form['margen_individual']
-        margen_ind = float(margen_ind) if margen_ind != '' else None
+        margen_ind = float(margen_ind) if margen_ind != "" else None
         stock = float(request.form['stock'])
         stock_min = float(request.form['stock_minimo'])
         
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO productos (nombre, proveedor_id, costo, margen_individual, stock, stock_minimo)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (nombre, prov_id, costo, margen_ind, stock, stock_min))
-        conn.commit()
-        conn.close()
+        try:
+            cursor.execute('''
+                INSERT INTO productos (nombre, proveedor_id, costo, margen_individual, stock, stock_minimo)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            ''', (nombre, prov_id, costo, margen_ind, stock, stock_min))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            conn.close()
         return redirect(url_for('productos_bp.productos'))
 
     @productos_bp.route('/editar_producto/<int:id>', methods=['POST'])
@@ -209,27 +213,35 @@ def registrar_rutas_productos(app, base_layout):
         prov_id = request.form['proveedor_id'] or None
         costo = float(request.form['costo'])
         margen_ind = request.form['margen_individual']
-        margen_ind = float(margen_ind) if margen_ind != '' else None
+        margen_ind = float(margen_ind) if margen_ind != "" else None
         stock = float(request.form['stock'])
         stock_min = float(request.form['stock_minimo'])
         
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('''
-            UPDATE productos SET nombre = ?, proveedor_id = ?, costo = ?, margen_individual = ?, stock = ?, stock_minimo = ?
-            WHERE id = ?
-        ''', (nombre, prov_id, costo, margen_ind, stock, stock_min, id))
-        conn.commit()
-        conn.close()
+        try:
+            cursor.execute('''
+                UPDATE productos SET nombre = %s, proveedor_id = %s, costo = %s, margen_individual = %s, stock = %s, stock_minimo = %s
+                WHERE id = %s
+            ''', (nombre, prov_id, costo, margen_ind, stock, stock_min, id))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            conn.close()
         return redirect(url_for('productos_bp.productos'))
 
     @productos_bp.route('/eliminar_producto/<int:id>')
     def eliminar_producto(id):
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM productos WHERE id = ?", (id,))
-        conn.commit()
-        conn.close()
+        try:
+            cursor.execute("DELETE FROM productos WHERE id = %s", (id,))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            conn.close()
         return redirect(url_for('productos_bp.productos'))
 
     app.register_blueprint(productos_bp)
