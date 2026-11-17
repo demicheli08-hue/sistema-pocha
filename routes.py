@@ -387,27 +387,36 @@ def register_routes(app):
         
         movimientos = []
         for v in ventas_cli:
-            movimientos.append({'fecha': v[0], 'tipo': 'Compra (Debe)', 'monto': v[1]})
+            movimientos.append({'fecha': v[0], 'tipo': 'Compra', 'debe': v[1], 'haber': 0.0})
         for p in pagos_cli:
-            movimientos.append({'fecha': p[0], 'tipo': 'Pago (Haber)', 'monto': p[1]})
+            movimientos.append({'fecha': p[0], 'tipo': 'Pago', 'debe': 0.0, 'haber': p[1]})
             
-        # Ordenar por fecha
+        # Ordenar por fecha cronológicamente
         movimientos.sort(key=lambda x: x['fecha'] if x['fecha'] else '')
         
         filas_mov = ""
+        subtotal_acumulado = 0.0
+        
         for m in movimientos:
-            monto_fmt = f"${m['monto']:.2f}"
-            badge_tipo = '<span class="badge bg-danger">Debe</span>' if 'Debe' in m['tipo'] else '<span class="badge bg-success">Haber</span>'
+            subtotal_acumulado += (m['debe'] - m['haber'])
+            debe_str = f"${m['debe']:.2f}" if m['debe'] > 0 else "-"
+            haber_str = f"${m['haber']:.2f}" if m['haber'] > 0 else "-"
+            subtotal_str = f"${subtotal_acumulado:.2f}"
+            
+            cls_sub = "text-danger fw-bold" if subtotal_acumulado > 0 else "text-success fw-bold"
+            
             filas_mov += f'''
             <tr>
                 <td>{m['fecha']}</td>
-                <td>{badge_tipo} {m['tipo']}</td>
-                <td class="fw-bold { 'text-danger' if 'Debe' in m['tipo'] else 'text-success' }">{monto_fmt}</td>
+                <td>{m['tipo']}</td>
+                <td class="text-danger fw-bold">{debe_str}</td>
+                <td class="text-success fw-bold">{haber_str}</td>
+                <td class="{cls_sub}">{subtotal_str}</td>
             </tr>
             '''
             
         if not filas_mov:
-            filas_mov = '<tr><td colspan="3" class="text-center text-muted">No hay movimientos en el periodo seleccionado.</td></tr>'
+            filas_mov = '<tr><td colspan="5" class="text-center text-muted">No hay movimientos en el periodo seleccionado.</td></tr>'
             
         content = f'''
         <div class="d-flex justify-content-between align-items-center mb-4">
@@ -442,8 +451,10 @@ def register_routes(app):
                 <thead class="table-dark">
                     <tr>
                         <th>Fecha y Hora</th>
-                        <th>Concepto / Movimiento</th>
-                        <th>Monto</th>
+                        <th>Concepto</th>
+                        <th>Debe</th>
+                        <th>Haber</th>
+                        <th>Subtotal (Saldo)</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -466,7 +477,6 @@ def register_routes(app):
             
             cursor.execute("UPDATE clientes SET saldo_cta_cte = %s WHERE id = %s", (nuevo_saldo, id))
             
-            # Registrar el pago en la tabla de historial
             fecha_actual = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             cursor.execute("INSERT INTO pagos_cta_cte (cliente_id, fecha, monto) VALUES (%s, %s, %s)", (id, fecha_actual, monto))
             
