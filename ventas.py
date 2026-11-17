@@ -6,11 +6,11 @@ from database import get_db_connection
 ventas_bp = Blueprint('ventas_bp', __name__)
 
 def registrar_rutas_ventas(app, base_layout):
-
     @ventas_bp.route('/ventas', methods=['GET', 'POST'])
     def ventas():
         conn = get_db_connection()
         cursor = conn.cursor()
+        
         cursor.execute("SELECT valor FROM config WHERE clave = 'margen_general'")
         row_m = cursor.fetchone()
         margen_gral = float(row_m[0]) if row_m else 30.0
@@ -25,7 +25,7 @@ def registrar_rutas_ventas(app, base_layout):
             margen = margen_ind if margen_ind is not None else margen_gral
             precio_vta = costo * (1 + margen / 100.0)
             options_prod += f'<option value="{pid}" data-precio="{precio_vta}">{pnombre} (Stock: {stock}) - ${precio_vta:.2f}</option>'
-
+            
         cursor.execute("SELECT id, nombre FROM clientes")
         clientes = cursor.fetchall()
         
@@ -34,6 +34,7 @@ def registrar_rutas_ventas(app, base_layout):
             tipo_pago = request.form.get('tipo_pago')
             productos_ids = request.form.getlist('producto_id[]')
             cantidades = request.form.getlist('cantidad[]')
+            
             total_venta = 0.0
             items_a_comprar = []
             
@@ -42,7 +43,8 @@ def registrar_rutas_ventas(app, base_layout):
                     continue
                 pid = int(pid_str)
                 cant = float(cant_str)
-                cursor.execute("SELECT costo, margen_individual, stock FROM productos WHERE id = ?", (pid,))
+                
+                cursor.execute("SELECT costo, margen_individual, stock FROM productos WHERE id = %s", (pid,))
                 res_p = cursor.fetchone()
                 if not res_p:
                     continue
@@ -55,21 +57,24 @@ def registrar_rutas_ventas(app, base_layout):
                 
             if items_a_comprar:
                 fecha_actual = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                cursor.execute("INSERT INTO ventas (fecha, cliente_id, tipo_pago, total) VALUES (?, ?, ?, ?)",
+                cursor.execute("INSERT INTO ventas (fecha, cliente_id, tipo_pago, total) VALUES (%s, %s, %s, %s) RETURNING id", 
                                (fecha_actual, cliente_id, tipo_pago, total_venta))
-                venta_id = cursor.lastrowid
+                venta_id = cursor.fetchone()[0]
+                
                 for pid, cant, p_unit, sub in items_a_comprar:
-                    cursor.execute("INSERT INTO detalle_ventas (venta_id, producto_id, cantidad, precio_unitario, subtotal) VALUES (?, ?, ?, ?, ?)",
+                    cursor.execute("INSERT INTO detalle_ventas (venta_id, producto_id, cantidad, precio_unitario, subtotal) VALUES (%s, %s, %s, %s, %s)",
                                    (venta_id, pid, cant, p_unit, sub))
-                    cursor.execute("UPDATE productos SET stock = stock - ? WHERE id = ?", (cant, pid))
+                    cursor.execute("UPDATE productos SET stock = stock - %s WHERE id = %s", (cant, pid))
                     
                 if tipo_pago == 'Cuenta Corriente' and cliente_id:
-                    cursor.execute("SELECT saldo_cta_cte FROM clientes WHERE id = ?", (cliente_id,))
-                    s_ant = cursor.fetchone()[0] or 0.0
+                    cursor.execute("SELECT saldo_cta_cte FROM clientes WHERE id = %s", (cliente_id,))
+                    row_s = cursor.fetchone()
+                    s_ant = row_s[0] if row_s and row_s[0] else 0.0
                     nuevo_s = s_ant + total_venta
-                    cursor.execute("UPDATE clientes SET saldo_cta_cte = ? WHERE id = ?", (nuevo_s, cliente_id))
+                    cursor.execute("UPDATE clientes SET saldo_cta_cte = %s WHERE id = %s", (nuevo_s, cliente_id))
                     
                 conn.commit()
+                
             conn.close()
             return redirect(url_for('ventas_bp.ventas'))
             
@@ -97,11 +102,11 @@ def registrar_rutas_ventas(app, base_layout):
                                 </div>
                                 <div class="col-md-2">
                                     <label class="form-label">Precio U.</label>
-                                    <input type="text" class="form-control precio-unitario" readonly value="\$0.00">
+                                    <input type="text" class="form-control precio-unitario" readonly value="$0.00">
                                 </div>
                                 <div class="col-md-2">
                                     <label class="form-label">Subtotal</label>
-                                    <input type="text" class="form-control subtotal-item fw-bold text-success" readonly value="\$0.00">
+                                    <input type="text" class="form-control subtotal-item fw-bold text-success" readonly value="$0.00">
                                 </div>
                                 <div class="col-md-1 d-flex align-items-end mt-4">
                                     <button type="button" class="btn btn-outline-danger remove-row"><i class="fas fa-trash"></i></button>
@@ -109,15 +114,12 @@ def registrar_rutas_ventas(app, base_layout):
                             </div>
                         </div>
                         <button type="button" id="addRow" class="btn btn-outline-secondary mb-3"><i class="fas fa-plus me-1"></i> Agregar otro producto</button>
-                        
                         <hr>
-                        
                         <!-- Total General -->
                         <div class="d-flex justify-content-between align-items-center bg-light p-3 rounded mb-3">
                             <h4 class="mb-0 text-dark">TOTAL GENERAL:</h4>
-                            <h3 class="mb-0 text-success fw-bold" id="totalGeneral">\$0.00</h3>
+                            <h3 class="mb-0 text-success fw-bold" id="totalGeneral">$0.00</h3>
                         </div>
-
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Forma de Pago</label>
@@ -148,70 +150,69 @@ def registrar_rutas_ventas(app, base_layout):
                 </div>
             </div>
         </div>
+        
         <script>
-            function calcularTotales() {{
-                let totalGeneral = 0;
-                document.querySelectorAll('.item-row').forEach(row => {{
-                    const select = row.querySelector('.producto-select');
-                    const cantidadInput = row.querySelector('.cantidad-input');
-                    const precioInput = row.querySelector('.precio-unitario');
-                    const subtotalInput = row.querySelector('.subtotal-item');
-                    
-                    const option = select.options[select.selectedIndex];
-                    const precio = option && option.dataset.precio ? parseFloat(option.dataset.precio) : 0;
-                    const cantidad = parseFloat(cantidadInput.value) || 0;
-                    const subtotal = precio * cantidad;
-                    
-                    precioInput.value = '$' + precio.toFixed(2);
-                    subtotalInput.value = '$' + subtotal.toFixed(2);
-                    totalGeneral += subtotal;
-                }});
-                document.getElementById('totalGeneral').innerText = '$' + totalGeneral.toFixed(2);
-            }}
-
-            document.getElementById('addRow').addEventListener('click', function() {{
-                const container = document.getElementById('itemsContainer');
-                const firstRow = container.querySelector('.item-row');
-                const newRow = firstRow.cloneNode(true);
-                newRow.querySelector('.cantidad-input').value = '1';
-                newRow.querySelector('.producto-select').selectedIndex = 0;
-                newRow.querySelector('.precio-unitario').value = '$0.00';
-                newRow.querySelector('.subtotal-item').value = '$0.00';
-                container.appendChild(newRow);
+        function calcularTotales() {{
+            let totalGeneral = 0;
+            document.querySelectorAll('.item-row').forEach(row => {{
+                const select = row.querySelector('.producto-select');
+                const cantidadInput = row.querySelector('.cantidad-input');
+                const precioInput = row.querySelector('.precio-unitario');
+                const subtotalInput = row.querySelector('.subtotal-item');
+                const option = select.options[select.selectedIndex];
+                const precio = option && option.dataset.precio ? parseFloat(option.dataset.precio) : 0;
+                const cantidad = parseFloat(cantidadInput.value) || 0;
+                const subtotal = precio * cantidad;
+                
+                precioInput.value = '$' + precio.toFixed(2);
+                subtotalInput.value = '$' + subtotal.toFixed(2);
+                totalGeneral += subtotal;
+            }});
+            document.getElementById('totalGeneral').innerText = '$' + totalGeneral.toFixed(2);
+        }}
+        
+        document.getElementById('addRow').addEventListener('click', function() {{
+            const container = document.getElementById('itemsContainer');
+            const firstRow = container.querySelector('.item-row');
+            const newRow = firstRow.cloneNode(true);
+            newRow.querySelector('.cantidad-input').value = '1';
+            newRow.querySelector('.producto-select').selectedIndex = 0;
+            newRow.querySelector('.precio-unitario').value = '$0.00';
+            newRow.querySelector('.subtotal-item').value = '$0.00';
+            container.appendChild(newRow);
+            calcularTotales();
+        }});
+        
+        document.addEventListener('change', function(e) {{
+            if (e.target.classList.contains('producto-select') || e.target.classList.contains('cantidad-input')) {{
                 calcularTotales();
-            }});
-
-            document.addEventListener('change', function(e) {{
-                if (e.target.classList.contains('producto-select') || e.target.classList.contains('cantidad-input')) {{
+            }}
+        }});
+        
+        document.addEventListener('input', function(e) {{
+            if (e.target.classList.contains('cantidad-input')) {{
+                calcularTotales();
+            }}
+        }});
+        
+        document.addEventListener('click', function(e) {{
+            if (e.target.closest('.remove-row')) {{
+                const rows = document.querySelectorAll('.item-row');
+                if (rows.length > 1) {{
+                    e.target.closest('.item-row').remove();
                     calcularTotales();
                 }}
-            }});
-
-            document.addEventListener('input', function(e) {{
-                if (e.target.classList.contains('cantidad-input')) {{
-                    calcularTotales();
-                }}
-            }});
-
-            document.addEventListener('click', function(e) {{
-                if (e.target.closest('.remove-row')) {{
-                    const rows = document.querySelectorAll('.item-row');
-                    if (rows.length > 1) {{
-                        e.target.closest('.item-row').remove();
-                        calcularTotales();
-                    }}
-                }}
-            }});
-
-            document.getElementById('tipoPago').addEventListener('change', function() {{
-                const divCliente = document.getElementById('divCliente');
-                divCliente.style.display = (this.value === 'Cuenta Corriente') ? 'block' : 'none';
-            }});
-
-            window.onload = calcularTotales;
+            }}
+        }});
+        
+        document.getElementById('tipoPago').addEventListener('change', function() {{
+            const divCliente = document.getElementById('divCliente');
+            divCliente.style.display = (this.value === 'Cuenta Corriente') ? 'block' : 'none';
+        }});
+        
+        window.onload = calcularTotales;
         </script>
         '''
-        conn.close()
         return render_template_string(base_layout('ventas', content))
 
     app.register_blueprint(ventas_bp)
