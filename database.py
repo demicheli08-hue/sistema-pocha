@@ -29,6 +29,14 @@ def init_db():
             )
         ''')
         cursor.execute('''
+    CREATE TABLE IF NOT EXISTS pagos_cta_cte (
+        id SERIAL PRIMARY KEY,
+        cliente_id INTEGER,
+        fecha TIMESTAMP,
+        monto NUMERIC
+            )
+        ''')
+        cursor.execute('''
             CREATE TABLE IF NOT EXISTS clientes (
                 id SERIAL PRIMARY KEY,
                 nombre TEXT NOT NULL,
