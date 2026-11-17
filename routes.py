@@ -24,6 +24,11 @@ def register_routes(app):
                 .sidebar a:hover, .sidebar a.active {{ background-color: #1abc9c; color: white; }}
                 .card-stats {{ border-left: 4px solid #1abc9c; }}
                 .table-responsive {{ background: white; border-radius: 8px; padding: 15px; box-shadow: 0 0 10px rgba(0,0,0,0.05); }}
+                @media print {{
+                    .sidebar, .navbar, .btn, form {{ display: none !important; }}
+                    body {{ background-color: white !important; }}
+                    .col-md-9, .col-lg-10 {{ width: 100% !important; margin: 0 !important; padding: 0 !important; }}
+                }}
             </style>
         </head>
         <body>
@@ -223,6 +228,7 @@ def register_routes(app):
                 <td><span class="text-success">{txt_haber}</span></td>
                 <td><span class="fs-5 {cls_saldo}">{txt_saldo}</span></td>
                 <td>
+                    <a href="/cliente_historial/{cid}" class="btn btn-sm btn-outline-info me-1"><i class="fas fa-history me-1"></i> Historial</a>
                     <button class="btn btn-sm btn-outline-success me-1" data-bs-toggle="modal" data-bs-target="#pagoModal{cid}"><i class="fas fa-money-bill-wave me-1"></i> Registrar Pago</button>
                     <button class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#editClienteModal{cid}"><i class="fas fa-edit"></i></button>
                     <a href="/eliminar_cliente/{cid}" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Eliminar cliente?');"><i class="fas fa-trash"></i></a>
@@ -336,6 +342,118 @@ def register_routes(app):
         '''
         return render_template_string(base_layout('clientes', content))
 
+    @app.route('/cliente_historial/<int:id>', methods=['GET'])
+    def cliente_historial(id):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT nombre, telefono, saldo_cta_cte FROM clientes WHERE id = %s", (id,))
+        c_info = cursor.fetchone()
+        if not c_info:
+            conn.close()
+            return redirect(url_for('clientes'))
+            
+        cnombre, ctel, csaldo = c_info
+        
+        fecha_desde = request.args.get('desde', '')
+        fecha_hasta = request.args.get('hasta', '')
+        
+        # Obtener compras a Cta Cte (Debe)
+        query_v = "SELECT fecha, total FROM ventas WHERE cliente_id = %s AND tipo_pago = 'Cuenta Corriente'"
+        params_v = [id]
+        if fecha_desde:
+            query_v += " AND fecha >= %s"
+            params_v.append(fecha_desde + " 00:00:00")
+        if fecha_hasta:
+            query_v += " AND fecha <= %s"
+            params_v.append(fecha_hasta + " 23:59:59")
+            
+        cursor.execute(query_v, tuple(params_v))
+        ventas_cli = cursor.fetchall()
+        
+        # Obtener pagos (Haber)
+        query_p = "SELECT fecha, monto FROM pagos_cta_cte WHERE cliente_id = %s"
+        params_p = [id]
+        if fecha_desde:
+            query_p += " AND fecha >= %s"
+            params_p.append(fecha_desde + " 00:00:00")
+        if fecha_hasta:
+            query_p += " AND fecha <= %s"
+            params_p.append(fecha_hasta + " 23:59:59")
+            
+        cursor.execute(query_p, tuple(params_p))
+        pagos_cli = cursor.fetchall()
+        conn.close()
+        
+        movimientos = []
+        for v in ventas_cli:
+            movimientos.append({'fecha': v[0], 'tipo': 'Compra (Debe)', 'monto': v[1]})
+        for p in pagos_cli:
+            movimientos.append({'fecha': p[0], 'tipo': 'Pago (Haber)', 'monto': p[1]})
+            
+        # Ordenar por fecha
+        movimientos.sort(key=lambda x: x['fecha'] if x['fecha'] else '')
+        
+        filas_mov = ""
+        for m in movimientos:
+            monto_fmt = f"${m['monto']:.2f}"
+            badge_tipo = '<span class="badge bg-danger">Debe</span>' if 'Debe' in m['tipo'] else '<span class="badge bg-success">Haber</span>'
+            filas_mov += f'''
+            <tr>
+                <td>{m['fecha']}</td>
+                <td>{badge_tipo} {m['tipo']}</td>
+                <td class="fw-bold { 'text-danger' if 'Debe' in m['tipo'] else 'text-success' }">{monto_fmt}</td>
+            </tr>
+            '''
+            
+        if not filas_mov:
+            filas_mov = '<tr><td colspan="3" class="text-center text-muted">No hay movimientos en el periodo seleccionado.</td></tr>'
+            
+        content = f'''
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2>Estado de Cuenta: {cnombre}</h2>
+                <p class="text-muted mb-0">Teléfono: {ctel or '-'} | Saldo Actual: <strong class="text-danger">${csaldo:.2f}</strong></p>
+            </div>
+            <div>
+                <a href="/clientes" class="btn btn-secondary me-2"><i class="fas fa-arrow-left me-1"></i> Volver</a>
+                <button onclick="window.print();" class="btn btn-primary"><i class="fas fa-print me-1"></i> Imprimir Informe</button>
+            </div>
+        </div>
+        
+        <div class="card shadow-sm p-3 bg-white mb-4">
+            <form method="GET" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">Desde Fecha</label>
+                    <input type="date" name="desde" class="form-control" value="{fecha_desde}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Hasta Fecha</label>
+                    <input type="date" name="hasta" class="form-control" value="{fecha_hasta}">
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-dark w-100"><i class="fas fa-filter me-1"></i> Filtrar Informe</button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Fecha y Hora</th>
+                        <th>Concepto / Movimiento</th>
+                        <th>Monto</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {filas_mov}
+                </tbody>
+            </table>
+        </div>
+        '''
+        return render_template_string(base_layout('clientes', content))
+
     @app.route('/pagar_cta_cte/<int:id>', methods=['POST'])
     def pagar_cta_cte(id):
         monto = float(request.form['monto_pago'])
@@ -345,7 +463,13 @@ def register_routes(app):
             cursor.execute("SELECT saldo_cta_cte FROM clientes WHERE id = %s", (id,))
             s_actual = cursor.fetchone()[0] or 0.0
             nuevo_saldo = s_actual - monto
+            
             cursor.execute("UPDATE clientes SET saldo_cta_cte = %s WHERE id = %s", (nuevo_saldo, id))
+            
+            # Registrar el pago en la tabla de historial
+            fecha_actual = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            cursor.execute("INSERT INTO pagos_cta_cte (cliente_id, fecha, monto) VALUES (%s, %s, %s)", (id, fecha_actual, monto))
+            
             conn.commit()
         except Exception:
             conn.rollback()
