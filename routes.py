@@ -213,4 +213,311 @@ def register_routes(app):
             except Exception:
                 debe = 0.0
                 
-            haber = max(0.0,
+            haber = max(0.0, debe - csaldo) if debe > csaldo else 0.0
+            
+            txt_debe = f"${debe:.2f}"
+            txt_haber = f"${haber:.2f}"
+            txt_saldo = f"${csaldo:.2f}"
+            cls_saldo = "text-danger fw-bold" if csaldo > 0 else "text-success"
+            
+            filas_cli += f'''
+            <tr>
+                <td><strong>{cnombre}</strong></td>
+                <td>{ctel or '-'}</td>
+                <td><span class="text-primary">{txt_debe}</span></td>
+                <td><span class="text-success">{txt_haber}</span></td>
+                <td><span class="fs-5 {cls_saldo}">{txt_saldo}</span></td>
+                <td>
+                    <a href="/cliente_historial/{cid}" class="btn btn-sm btn-outline-info me-1"><i class="fas fa-history me-1"></i> Historial</a>
+                    <button class="btn btn-sm btn-outline-success me-1" data-bs-toggle="modal" data-bs-target="#pagoModal{cid}"><i class="fas fa-money-bill-wave me-1"></i> Registrar Pago</button>
+                    <button class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#editClienteModal{cid}"><i class="fas fa-edit"></i></button>
+                    <a href="/eliminar_cliente/{cid}" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Eliminar cliente?');"><i class="fas fa-trash"></i></a>
+                </td>
+            </tr>
+            '''
+            modales_cli += f'''
+            <div class="modal fade" id="pagoModal{cid}" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <form action="/pagar_cta_cte/{cid}" method="POST">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Registrar Pago de: {cnombre}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>Saldo Actual Pendiente: <strong>${csaldo:.2f}</strong></p>
+                                <div class="mb-3">
+                                    <label class="form-label">Monto a Abonar ($)</label>
+                                    <input type="number" step="0.01" name="monto_pago" class="form-control" required>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                <button type="submit" class="btn btn-success">Acreditar Pago</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal fade" id="editClienteModal{cid}" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <form action="/editar_cliente/{cid}" method="POST">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Editar Cliente: {cnombre}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Nombre y Apellido</label>
+                                    <input type="text" name="nombre" class="form-control" value="{cnombre}" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Teléfono</label>
+                                    <input type="text" name="telefono" class="form-control" value="{ctel or ''}">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            '''
+            
+        conn.close()
+        
+        content = f'''
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Gestión de Clientes & Cuentas Corrientes</h2>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalNuevoCliente"><i class="fas fa-user-plus me-1"></i> Nuevo Cliente</button>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Cliente</th>
+                        <th>Teléfono</th>
+                        <th>Debe (Total Consumido)</th>
+                        <th>Haber (Total Pagado)</th>
+                        <th>Saldo Actual (Subtotal)</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {filas_cli}
+                </tbody>
+            </table>
+        </div>
+        {modales_cli}
+        <div class="modal fade" id="modalNuevoCliente" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form action="/clientes" method="POST">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Nuevo Cliente</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">Nombre y Apellido</label>
+                                <input type="text" name="nombre" class="form-control" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Teléfono</label>
+                                <input type="text" name="telefono" class="form-control">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Guardar Cliente</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        '''
+        return render_template_string(base_layout('clientes', content))
+
+    @app.route('/cliente_historial/<int:id>', methods=['GET'])
+    def cliente_historial(id):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT nombre, telefono, saldo_cta_cte FROM clientes WHERE id = %s", (id,))
+        c_info = cursor.fetchone()
+        if not c_info:
+            conn.close()
+            return redirect(url_for('clientes'))
+            
+        cnombre, ctel, csaldo = c_info
+        
+        fecha_desde = request.args.get('desde', '')
+        fecha_hasta = request.args.get('hasta', '')
+        
+        # Obtener compras a Cta Cte (Debe)
+        query_v = "SELECT fecha, total FROM ventas WHERE cliente_id = %s AND tipo_pago = 'Cuenta Corriente'"
+        params_v = [id]
+        if fecha_desde:
+            query_v += " AND fecha >= %s"
+            params_v.append(fecha_desde + " 00:00:00")
+        if fecha_hasta:
+            query_v += " AND fecha <= %s"
+            params_v.append(fecha_hasta + " 23:59:59")
+            
+        cursor.execute(query_v, tuple(params_v))
+        ventas_cli = cursor.fetchall()
+        
+        # Obtener pagos (Haber)
+        query_p = "SELECT fecha, monto FROM pagos_cta_cte WHERE cliente_id = %s"
+        params_p = [id]
+        if fecha_desde:
+            query_p += " AND fecha >= %s"
+            params_p.append(fecha_desde + " 00:00:00")
+        if fecha_hasta:
+            query_p += " AND fecha <= %s"
+            params_p.append(fecha_hasta + " 23:59:59")
+            
+        cursor.execute(query_p, tuple(params_p))
+        pagos_cli = cursor.fetchall()
+        conn.close()
+        
+        movimientos = []
+        for v in ventas_cli:
+            f_str = str(v[0]) if v[0] else ''
+            movimientos.append({'fecha': f_str, 'tipo': 'Compra', 'debe': v[1], 'haber': 0.0})
+        for p in pagos_cli:
+            f_str = str(p[0]) if p[0] else ''
+            movimientos.append({'fecha': f_str, 'tipo': 'Pago', 'debe': 0.0, 'haber': p[1]})
+            
+        # Ordenar por fecha cronológicamente de forma segura asegurando texto
+        movimientos.sort(key=lambda x: x['fecha'])
+        
+        filas_mov = ""
+        subtotal_acumulado = 0.0
+        
+        for m in movimientos:
+            subtotal_acumulado += (m['debe'] - m['haber'])
+            debe_str = f"${m['debe']:.2f}" if m['debe'] > 0 else "-"
+            haber_str = f"${m['haber']:.2f}" if m['haber'] > 0 else "-"
+            subtotal_str = f"${subtotal_acumulado:.2f}"
+            
+            cls_sub = "text-danger fw-bold" if subtotal_acumulado > 0 else "text-success fw-bold"
+            
+            filas_mov += f'''
+            <tr>
+                <td>{m['fecha']}</td>
+                <td>{m['tipo']}</td>
+                <td class="text-danger fw-bold">{debe_str}</td>
+                <td class="text-success fw-bold">{haber_str}</td>
+                <td class="{cls_sub}">{subtotal_str}</td>
+            </tr>
+            '''
+            
+        if not filas_mov:
+            filas_mov = '<tr><td colspan="5" class="text-center text-muted">No hay movimientos en el periodo seleccionado.</td></tr>'
+            
+        content = f'''
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2>Estado de Cuenta: {cnombre}</h2>
+                <p class="text-muted mb-0">Teléfono: {ctel or '-'} | Saldo Actual: <strong class="text-danger">${csaldo:.2f}</strong></p>
+            </div>
+            <div>
+                <a href="/clientes" class="btn btn-secondary me-2"><i class="fas fa-arrow-left me-1"></i> Volver</a>
+                <button onclick="window.print();" class="btn btn-primary"><i class="fas fa-print me-1"></i> Imprimir Informe</button>
+            </div>
+        </div>
+        
+        <div class="card shadow-sm p-3 bg-white mb-4">
+            <form method="GET" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">Desde Fecha</label>
+                    <input type="date" name="desde" class="form-control" value="{fecha_desde}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Hasta Fecha</label>
+                    <input type="date" name="hasta" class="form-control" value="{fecha_hasta}">
+                </div>
+                <div class="col-md-4">
+                    <button type="submit" class="btn btn-dark w-100"><i class="fas fa-filter me-1"></i> Filtrar Informe</button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Fecha y Hora</th>
+                        <th>Concepto</th>
+                        <th>Debe</th>
+                        <th>Haber</th>
+                        <th>Subtotal (Saldo)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {filas_mov}
+                </tbody>
+            </table>
+        </div>
+        '''
+        return render_template_string(base_layout('clientes', content))
+
+    @app.route('/pagar_cta_cte/<int:id>', methods=['POST'])
+    def pagar_cta_cte(id):
+        monto = float(request.form['monto_pago'])
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT saldo_cta_cte FROM clientes WHERE id = %s", (id,))
+            s_actual = cursor.fetchone()[0] or 0.0
+            nuevo_saldo = s_actual - monto
+            
+            cursor.execute("UPDATE clientes SET saldo_cta_cte = %s WHERE id = %s", (nuevo_saldo, id))
+            
+            fecha_actual = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            cursor.execute("INSERT INTO pagos_cta_cte (cliente_id, fecha, monto) VALUES (%s, %s, %s)", (id, fecha_actual, monto))
+            
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            conn.close()
+        return redirect(url_for('clientes'))
+
+    @app.route('/editar_cliente/<int:id>', methods=['POST'])
+    def editar_cliente(id):
+        nombre = request.form['nombre']
+        telefono = request.form['telefono']
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("UPDATE clientes SET nombre = %s, telefono = %s WHERE id = %s", (nombre, telefono, id))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            conn.close()
+        return redirect(url_for('clientes'))
+
+    @app.route('/eliminar_cliente/<int:id>')
+    def eliminar_cliente(id):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM clientes WHERE id = %s", (id,))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            conn.close()
+        return redirect(url_for('clientes'))
+
+    # Registrar sub-módulos
+    registrar_rutas_ventas(app, base_layout)
+    registrar_rutas_productos(app, base_layout)
+    registrar_rutas_proveedores(app, base_layout)
