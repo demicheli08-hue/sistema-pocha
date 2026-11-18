@@ -88,7 +88,7 @@ def register_routes(app):
                 hoy = datetime.date.today().strftime('%Y-%m-%d')
                 cursor.execute("SELECT SUM(total) FROM ventas WHERE fecha LIKE %s", (f"{hoy}%",))
                 row_v = cursor.fetchone()
-                ventas_hoy = row_v[0] if row_v and row_v[0] else 0.0
+                ventas_hoy = float(row_v[0]) if row_v and row_v[0] else 0.0
             except Exception:
                 conn.rollback()
                 ventas_hoy = 0.0
@@ -205,11 +205,12 @@ def register_routes(app):
         modales_cli = ""
         for c in clientes_list:
             cid, cnombre, ctel, csaldo = c
+            csaldo = float(csaldo) if csaldo is not None else 0.0
             
             try:
                 cursor.execute("SELECT SUM(total) FROM ventas WHERE cliente_id = %s AND tipo_pago = 'Cuenta Corriente'", (cid,))
                 row_d = cursor.fetchone()
-                debe = row_d[0] if row_d and row_d[0] else 0.0
+                debe = float(row_d[0]) if row_d and row_d[0] else 0.0
             except Exception:
                 debe = 0.0
                 
@@ -354,6 +355,7 @@ def register_routes(app):
             return redirect(url_for('clientes'))
             
         cnombre, ctel, csaldo = c_info
+        csaldo = float(csaldo) if csaldo is not None else 0.0
         
         fecha_desde = request.args.get('desde', '')
         fecha_hasta = request.args.get('hasta', '')
@@ -388,19 +390,21 @@ def register_routes(app):
         movimientos = []
         for v in ventas_cli:
             f_str = str(v[0]) if v[0] else ''
-            movimientos.append({'fecha': f_str, 'tipo': 'Compra', 'debe': v[1], 'haber': 0.0})
+            monto_v = float(v[1]) if v[1] is not None else 0.0
+            movimientos.append({'fecha': f_str, 'tipo': 'Compra', 'debe': monto_v, 'haber': 0.0})
         for p in pagos_cli:
             f_str = str(p[0]) if p[0] else ''
-            movimientos.append({'fecha': f_str, 'tipo': 'Pago', 'debe': 0.0, 'haber': p[1]})
+            monto_p = float(p[1]) if p[1] is not None else 0.0
+            movimientos.append({'fecha': f_str, 'tipo': 'Pago', 'debe': 0.0, 'haber': monto_p})
             
-        # Ordenar por fecha cronológicamente de forma segura asegurando texto
+        # Ordenar por fecha cronológicamente de forma segura
         movimientos.sort(key=lambda x: x['fecha'])
         
         filas_mov = ""
         subtotal_acumulado = 0.0
         
         for m in movimientos:
-            subtotal_acumulado += (m['debe'] - m['haber'])
+            subtotal_acumulado += float(m['debe'] - m['haber'])
             debe_str = f"${m['debe']:.2f}" if m['debe'] > 0 else "-"
             haber_str = f"${m['haber']:.2f}" if m['haber'] > 0 else "-"
             subtotal_str = f"${subtotal_acumulado:.2f}"
@@ -474,7 +478,7 @@ def register_routes(app):
         cursor = conn.cursor()
         try:
             cursor.execute("SELECT saldo_cta_cte FROM clientes WHERE id = %s", (id,))
-            s_actual = cursor.fetchone()[0] or 0.0
+            s_actual = float(cursor.fetchone()[0]) if cursor.fetchone() and cursor.fetchone()[0] else 0.0
             nuevo_saldo = s_actual - monto
             
             cursor.execute("UPDATE clientes SET saldo_cta_cte = %s WHERE id = %s", (nuevo_saldo, id))
