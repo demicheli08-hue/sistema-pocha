@@ -348,14 +348,13 @@ def register_routes(app):
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("SELECT nombre, telefono, saldo_cta_cte FROM clientes WHERE id = %s", (id,))
+        cursor.execute("SELECT nombre, telefono FROM clientes WHERE id = %s", (id,))
         c_info = cursor.fetchone()
         if not c_info:
             conn.close()
             return redirect(url_for('clientes'))
             
-        cnombre, ctel, csaldo = c_info
-        csaldo = float(csaldo) if csaldo is not None else 0.0
+        cnombre, ctel = c_info
         
         fecha_desde = request.args.get('desde', '')
         fecha_hasta = request.args.get('hasta', '')
@@ -423,12 +422,15 @@ def register_routes(app):
             
         if not filas_mov:
             filas_mov = '<tr><td colspan="5" class="text-center text-muted">No hay movimientos en el periodo seleccionado.</td></tr>'
+            csaldo_calculado = 0.0
+        else:
+            csaldo_calculado = subtotal_acumulado
             
         content = f'''
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
                 <h2>Estado de Cuenta: {cnombre}</h2>
-                <p class="text-muted mb-0">Teléfono: {ctel or '-'} | Saldo Actual: <strong class="text-danger">${csaldo:.2f}</strong></p>
+                <p class="text-muted mb-0">Teléfono: {ctel or '-'} | Saldo Actual: <strong class="text-danger">${csaldo_calculado:.2f}</strong></p>
             </div>
             <div>
                 <a href="/clientes" class="btn btn-secondary me-2"><i class="fas fa-arrow-left me-1"></i> Volver</a>
@@ -478,7 +480,8 @@ def register_routes(app):
         cursor = conn.cursor()
         try:
             cursor.execute("SELECT saldo_cta_cte FROM clientes WHERE id = %s", (id,))
-            s_actual = float(cursor.fetchone()[0]) if cursor.fetchone() and cursor.fetchone()[0] else 0.0
+            row_s = cursor.fetchone()
+            s_actual = float(row_s[0]) if row_s and row_s[0] else 0.0
             nuevo_saldo = s_actual - monto
             
             cursor.execute("UPDATE clientes SET saldo_cta_cte = %s WHERE id = %s", (nuevo_saldo, id))
