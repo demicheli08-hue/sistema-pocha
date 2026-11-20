@@ -1,169 +1,403 @@
 from flask import render_template_string, request, redirect, url_for
+import datetime
 from database import get_db_connection
+from ventas import registrar_rutas_ventas
+from productos import registrar_rutas_productos
+from proveedores import registrar_rutas_proveedores
+from historial_cliente import registrar_rutas_historial_cliente
 
 
-def registrar_rutas_historial_cliente(app, base_layout):
+def register_routes(app):
 
-    @app.route('/cliente_historial/<int:id>', methods=['GET'])
-    def cliente_historial(id):
+    def base_layout(active_page, content):
+        return f'''
+        <!DOCTYPE html>
+        <html lang="es">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Almacén Natural Pocha - Sistema de Gestión</title>
+            <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+            <style>
+                body {{ background-color: #f4f6f9; }}
+                .sidebar {{ background-color: #2c3e50; min-height: 100vh; color: white; }}
+                .sidebar a {{ color: #bdc3c7; text-decoration: none; padding: 10px 15px; display: block; border-radius: 5px; margin-bottom: 5px; }}
+                .sidebar a:hover, .sidebar a.active {{ background-color: #1abc9c; color: white; }}
+                .card-stats {{ border-left: 4px solid #1abc9c; }}
+                .table-responsive {{ background: white; border-radius: 8px; padding: 15px; box-shadow: 0 0 10px rgba(0,0,0,0.05); }}
+                @media print {{
+                    .sidebar, .navbar, .btn, form {{ display: none !important; }}
+                    body {{ background-color: white !important; }}
+                    .col-md-9, .col-lg-10 {{ width: 100% !important; margin: 0 !important; padding: 0 !important; }}
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container-fluid">
+                <div class="row">
+                    <!-- Menú Lateral -->
+                    <div class="col-md-3 col-lg-2 sidebar p-3 d-none d-md-block">
+                        <h4 class="text-center text-white mb-4"><i class="fas fa-seedling me-2"></i>Pocha Admin</h4>
+                        <a href="/" class="{'active' if active_page == 'home' else ''}"><i class="fas fa-home me-2"></i> Inicio / Resumen</a>
+                        <a href="/productos" class="{'active' if active_page == 'productos' else ''}"><i class="fas fa-box me-2"></i> Productos & Stock</a>
+                        <a href="/ventas" class="{'active' if active_page == 'ventas' else ''}"><i class="fas fa-cash-register me-2"></i> Nueva Venta (Caja)</a>
+                        <a href="/clientes" class="{'active' if active_page == 'clientes' else ''}"><i class="fas fa-users me-2"></i> Clientes (Cta. Cte.)</a>
+                        <a href="/proveedores" class="{'active' if active_page == 'proveedores' else ''}"><i class="fas fa-truck me-2"></i> Proveedores & Pedidos</a>
+                    </div>
+
+                    <!-- Contenido Principal -->
+                    <div class="col-md-9 col-lg-10 ms-sm-auto px-md-4 py-4">
+                        <nav class="navbar navbar-dark bg-dark d-md-none rounded mb-3 px-3">
+                            <span class="navbar-brand">Pocha Almacén</span>
+                            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mobileNav">
+                                <span class="navbar-toggler-icon"></span>
+                            </button>
+                            <div class="collapse navbar-collapse" id="mobileNav">
+                                <ul class="navbar-nav mt-2">
+                                    <li class="nav-item"><a class="nav-link" href="/">Inicio</a></li>
+                                    <li class="nav-item"><a class="nav-link" href="/productos">Productos & Stock</a></li>
+                                    <li class="nav-item"><a class="nav-link" href="/ventas">Nueva Venta</a></li>
+                                    <li class="nav-item"><a class="nav-link" href="/clientes">Clientes</a></li>
+                                    <li class="nav-item"><a class="nav-link" href="/proveedores">Proveedores</a></li>
+                                </ul>
+                            </div>
+                        </nav>
+                        {content}
+                    </div>
+                </div>
+            </div>
+            <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+        </body>
+        </html>
+        '''
+
+    @app.route('/')
+    def index():
         conn = get_db_connection()
         cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT COUNT(*) FROM productos")
+            total_prod = cursor.fetchone()[0]
 
-        cursor.execute("SELECT nombre, telefono FROM clientes WHERE id = %s", (id,))
-        c_info = cursor.fetchone()
-        if not c_info:
+            cursor.execute("SELECT COUNT(*) FROM productos WHERE stock <= stock_minimo")
+            stock_bajo = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) FROM clientes WHERE saldo_cta_cte > 0")
+            clientes_deuda = cursor.fetchone()[0]
+
+            try:
+                hoy = datetime.date.today().strftime('%Y-%m-%d')
+                cursor.execute("SELECT SUM(total) FROM ventas WHERE fecha LIKE %s", (f"{hoy}%",))
+                row_v = cursor.fetchone()
+                ventas_hoy = float(row_v[0]) if row_v and row_v[0] else 0.0
+            except Exception:
+                conn.rollback()
+                ventas_hoy = 0.0
+
+            cursor.execute("SELECT valor FROM config WHERE clave = 'margen_general'")
+            row_m = cursor.fetchone()
+            margen_gral = row_m[0] if row_m else '30'
+
+        except Exception:
+            conn.rollback()
+            total_prod = 0
+            stock_bajo = 0
+            clientes_deuda = 0
+            ventas_hoy = 0.0
+            margen_gral = '30'
+        finally:
             conn.close()
-            return redirect(url_for('clientes'))
-
-        cnombre, ctel = c_info
-
-        fecha_desde = request.args.get('desde', '')
-        fecha_hasta = request.args.get('hasta', '')
-
-        # Obtener compras a Cta Cte (Debe) incluyendo el id de venta
-        query_v = "SELECT id, fecha, total FROM ventas WHERE cliente_id = %s AND tipo_pago = 'Cuenta Corriente'"
-        params_v = [id]
-        if fecha_desde:
-            query_v += " AND fecha >= %s"
-            params_v.append(fecha_desde + " 00:00:00")
-        if fecha_hasta:
-            query_v += " AND fecha <= %s"
-            params_v.append(fecha_hasta + " 23:59:59")
-
-        cursor.execute(query_v, tuple(params_v))
-        ventas_cli = cursor.fetchall()
-
-        # Obtener pagos (Haber)
-        query_p = "SELECT fecha, monto FROM pagos_cta_cte WHERE cliente_id = %s"
-        params_p = [id]
-        if fecha_desde:
-            query_p += " AND fecha >= %s"
-            params_p.append(fecha_desde + " 00:00:00")
-        if fecha_hasta:
-            query_p += " AND fecha <= %s"
-            params_p.append(fecha_hasta + " 23:59:59")
-
-        cursor.execute(query_p, tuple(params_p))
-        pagos_cli = cursor.fetchall()
-
-        movimientos = []
-        for v in ventas_cli:
-            venta_id = v[0]
-            f_str = str(v[1]) if v[1] else ''
-            monto_v = float(v[2]) if v[2] is not None else 0.0
-
-            # Buscar descripción y precio unitario de los productos de esa venta
-            cursor.execute('''
-                SELECT p.nombre, d.cantidad, d.precio_unitario
-                FROM detalle_ventas d
-                LEFT JOIN productos p ON d.producto_id = p.id
-                WHERE d.venta_id = %s
-            ''', (venta_id,))
-            detalles = cursor.fetchall()
-
-            items_html = ""
-            if detalles:
-                lineas = []
-                for det in detalles:
-                    prod_nombre = det[0] or "Producto"
-                    cant = float(det[1]) if det[1] is not None else 0.0
-                    p_unit = float(det[2]) if det[2] is not None else 0.0
-                    cant_str = f"{cant:g}"
-                    lineas.append(f"• {prod_nombre} (x{cant_str}) — <strong>P. Unit:</strong> ${p_unit:.2f}")
-                items_html = "<br><small class='text-muted'>" + "<br>".join(lineas) + "</small>"
-
-            movimientos.append({
-                'fecha': f_str,
-                'tipo': f"Compra{items_html}",
-                'debe': monto_v,
-                'haber': 0.0
-            })
-
-        for p in pagos_cli:
-            f_str = str(p[0]) if p[0] else ''
-            monto_p = float(p[1]) if p[1] is not None else 0.0
-            movimientos.append({
-                'fecha': f_str,
-                'tipo': 'Pago',
-                'debe': 0.0,
-                'haber': monto_p
-            })
-
-        conn.close()
-
-        # Ordenar por fecha cronológicamente de forma segura
-        movimientos.sort(key=lambda x: x['fecha'])
-
-        filas_mov = ""
-        subtotal_acumulado = 0.0
-
-        for m in movimientos:
-            subtotal_acumulado += float(m['debe'] - m['haber'])
-            debe_str = f"${m['debe']:.2f}" if m['debe'] > 0 else "-"
-            haber_str = f"${m['haber']:.2f}" if m['haber'] > 0 else "-"
-            subtotal_str = f"${subtotal_acumulado:.2f}"
-
-            cls_sub = "text-danger fw-bold" if subtotal_acumulado > 0 else "text-success fw-bold"
-
-            filas_mov += f'''
-            <tr>
-                <td>{m['fecha']}</td>
-                <td>{m['tipo']}</td>
-                <td class="text-danger fw-bold">{debe_str}</td>
-                <td class="text-success fw-bold">{haber_str}</td>
-                <td class="{cls_sub}">{subtotal_str}</td>
-            </tr>
-            '''
-
-        if not filas_mov:
-            filas_mov = '<tr><td colspan="5" class="text-center text-muted">No hay movimientos en el periodo seleccionado.</td></tr>'
-            csaldo_calculado = 0.0
-        else:
-            csaldo_calculado = subtotal_acumulado
 
         content = f'''
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <div>
-                <h2>Estado de Cuenta: {cnombre}</h2>
-                <p class="text-muted mb-0">Teléfono: {ctel or '-'} | Saldo Actual: <strong class="text-danger">${csaldo_calculado:.2f}</strong></p>
+            <h2>Panel de Control Almacén Natural</h2>
+            <span class="badge bg-success fs-6">Sistema Cloud Activo / Local</span>
+        </div>
+        <div class="row g-4 mb-4">
+            <div class="col-md-3">
+                <div class="card card-stats shadow-sm p-3 bg-white">
+                    <h6 class="text-muted">Total Productos</h6>
+                    <h3>{total_prod}</h3>
+                </div>
             </div>
-            <div>
-                <a href="/clientes" class="btn btn-secondary me-2"><i class="fas fa-arrow-left me-1"></i> Volver</a>
-                <button onclick="window.print();" class="btn btn-primary"><i class="fas fa-print me-1"></i> Imprimir Informe</button>
+            <div class="col-md-3">
+                <div class="card card-stats border-danger shadow-sm p-3 bg-white" style="border-left-color: #e74c3c;">
+                    <h6 class="text-muted">Productos Stock Bajo</h6>
+                    <h3 class="text-danger">{stock_bajo}</h3>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card card-stats border-warning shadow-sm p-3 bg-white" style="border-left-color: #f1c40f;">
+                    <h6 class="text-muted">Ventas de Hoy</h6>
+                    <h3>${ventas_hoy:.2f}</h3>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card card-stats border-info shadow-sm p-3 bg-white" style="border-left-color: #3498db;">
+                    <h6 class="text-muted">Clientes c/ Deuda</h6>
+                    <h3>{clientes_deuda}</h3>
+                </div>
             </div>
         </div>
-
-        <div class="card shadow-sm p-3 bg-white mb-4">
-            <form method="GET" class="row g-3 align-items-end">
-                <div class="col-md-4">
-                    <label class="form-label">Desde Fecha</label>
-                    <input type="date" name="desde" class="form-control" value="{fecha_desde}">
+        <div class="row">
+            <div class="col-md-6 mb-4">
+                <div class="card shadow-sm p-3 bg-white">
+                    <h5>Configuración General</h5>
+                    <form action="/actualizar_margen" method="POST" class="mt-3">
+                        <div class="mb-3">
+                            <label class="form-label">Porcentaje de Ganancia General (%)</label>
+                            <div class="input-group">
+                                <input type="number" step="0.1" name="margen_general" class="form-control" value="{margen_gral}">
+                                <button class="btn btn-primary" type="submit">Actualizar Margen</button>
+                            </div>
+                            <small class="text-muted">Se aplica a los productos sin margen individual.</small>
+                        </div>
+                    </form>
                 </div>
-                <div class="col-md-4">
-                    <label class="form-label">Hasta Fecha</label>
-                    <input type="date" name="hasta" class="form-control" value="{fecha_hasta}">
+            </div>
+            <div class="col-md-6 mb-4">
+                <div class="card shadow-sm p-3 bg-white">
+                    <h5>Accesos Rápidos</h5>
+                    <div class="d-grid gap-2 mt-3">
+                        <a href="/ventas" class="btn btn-success btn-lg"><i class="fas fa-cash-register me-2"></i> Registrar Nueva Venta</a>
+                        <a href="/productos" class="btn btn-outline-primary"><i class="fas fa-box me-2"></i> Cargar / Editar Productos</a>
+                        <a href="/clientes" class="btn btn-outline-dark"><i class="fas fa-users me-2"></i> Ver Cuentas Corrientes</a>
+                    </div>
                 </div>
-                <div class="col-md-4">
-                    <button type="submit" class="btn btn-dark w-100"><i class="fas fa-filter me-1"></i> Filtrar Informe</button>
-                </div>
-            </form>
+            </div>
         </div>
+        '''
+        return render_template_string(base_layout('home', content))
 
+    @app.route('/actualizar_margen', methods=['POST'])
+    def actualizar_margen():
+        nuevo_margen = request.form['margen_general']
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("UPDATE config SET valor = %s WHERE clave = 'margen_general'", (nuevo_margen,))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            conn.close()
+        return redirect(url_for('index'))
+
+    @app.route('/clientes', methods=['GET', 'POST'])
+    def clientes():
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        if request.method == 'POST':
+            nombre = request.form['nombre']
+            telefono = request.form['telefono']
+            try:
+                cursor.execute("INSERT INTO clientes (nombre, telefono, saldo_cta_cte) VALUES (%s, %s, 0.0)", (nombre, telefono))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+            finally:
+                conn.close()
+            return redirect(url_for('clientes'))
+
+        cursor.execute("SELECT id, nombre, telefono, saldo_cta_cte FROM clientes")
+        clientes_list = cursor.fetchall()
+
+        filas_cli = ""
+        modales_cli = ""
+        for c in clientes_list:
+            cid, cnombre, ctel, csaldo = c
+            csaldo = float(csaldo) if csaldo is not None else 0.0
+
+            try:
+                cursor.execute("SELECT SUM(total) FROM ventas WHERE cliente_id = %s AND tipo_pago = 'Cuenta Corriente'", (cid,))
+                row_d = cursor.fetchone()
+                debe = float(row_d[0]) if row_d and row_d[0] else 0.0
+            except Exception:
+                debe = 0.0
+
+            haber = max(0.0, debe - csaldo) if debe > csaldo else 0.0
+
+            txt_debe = f"${debe:.2f}"
+            txt_haber = f"${haber:.2f}"
+            txt_saldo = f"${csaldo:.2f}"
+            cls_saldo = "text-danger fw-bold" if csaldo > 0 else "text-success"
+
+            filas_cli += f'''
+            <tr>
+                <td><strong>{cnombre}</strong></td>
+                <td>{ctel or '-'}</td>
+                <td><span class="text-primary">{txt_debe}</span></td>
+                <td><span class="text-success">{txt_haber}</span></td>
+                <td><span class="fs-5 {cls_saldo}">{txt_saldo}</span></td>
+                <td>
+                    <a href="/cliente_historial/{cid}" class="btn btn-sm btn-outline-info me-1"><i class="fas fa-history me-1"></i> Historial</a>
+                    <button class="btn btn-sm btn-outline-success me-1" data-bs-toggle="modal" data-bs-target="#pagoModal{cid}"><i class="fas fa-money-bill-wave me-1"></i> Registrar Pago</button>
+                    <button class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal" data-bs-target="#editClienteModal{cid}"><i class="fas fa-edit"></i></button>
+                    <a href="/eliminar_cliente/{cid}" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Eliminar cliente?');"><i class="fas fa-trash"></i></a>
+                </td>
+            </tr>
+            '''
+            modales_cli += f'''
+            <div class="modal fade" id="pagoModal{cid}" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <form action="/pagar_cta_cte/{cid}" method="POST">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Registrar Pago de: {cnombre}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>Saldo Actual Pendiente: <strong>${csaldo:.2f}</strong></p>
+                                <div class="mb-3">
+                                    <label class="form-label">Monto a Abonar ($)</label>
+                                    <input type="number" step="0.01" name="monto_pago" class="form-control" required>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                <button type="submit" class="btn btn-success">Acreditar Pago</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal fade" id="editClienteModal{cid}" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <form action="/editar_cliente/{cid}" method="POST">
+                            <div class="modal-header">
+                                <h5 class="modal-title">Editar Cliente: {cnombre}</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="mb-3">
+                                    <label class="form-label">Nombre y Apellido</label>
+                                    <input type="text" name="nombre" class="form-control" value="{cnombre}" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Teléfono</label>
+                                    <input type="text" name="telefono" class="form-control" value="{ctel or ''}">
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                <button type="submit" class="btn btn-primary">Guardar Cambios</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            '''
+
+        conn.close()
+
+        content = f'''
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Gestión de Clientes & Cuentas Corrientes</h2>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalNuevoCliente"><i class="fas fa-user-plus me-1"></i> Nuevo Cliente</button>
+        </div>
         <div class="table-responsive">
             <table class="table table-hover align-middle">
                 <thead class="table-dark">
                     <tr>
-                        <th>Fecha y Hora</th>
-                        <th>Concepto / Detalle</th>
-                        <th>Debe</th>
-                        <th>Haber</th>
-                        <th>Subtotal (Saldo)</th>
+                        <th>Cliente</th>
+                        <th>Teléfono</th>
+                        <th>Debe (Total Consumido)</th>
+                        <th>Haber (Total Pagado)</th>
+                        <th>Saldo Actual (Subtotal)</th>
+                        <th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {filas_mov}
+                    {filas_cli}
                 </tbody>
             </table>
         </div>
+        {modales_cli}
+        <div class="modal fade" id="modalNuevoCliente" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form action="/clientes" method="POST">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Nuevo Cliente</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">Nombre y Apellido</label>
+                                <input type="text" name="nombre" class="form-control" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Teléfono</label>
+                                <input type="text" name="telefono" class="form-control">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">Guardar Cliente</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
         '''
         return render_template_string(base_layout('clientes', content))
+
+    @app.route('/pagar_cta_cte/<int:id>', methods=['POST'])
+    def pagar_cta_cte(id):
+        monto = float(request.form['monto_pago'])
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT saldo_cta_cte FROM clientes WHERE id = %s", (id,))
+            row_s = cursor.fetchone()
+            s_actual = float(row_s[0]) if row_s and row_s[0] else 0.0
+            nuevo_saldo = s_actual - monto
+
+            cursor.execute("UPDATE clientes SET saldo_cta_cte = %s WHERE id = %s", (nuevo_saldo, id))
+
+            fecha_actual = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            cursor.execute("INSERT INTO pagos_cta_cte (cliente_id, fecha, monto) VALUES (%s, %s, %s)", (id, fecha_actual, monto))
+
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            conn.close()
+        return redirect(url_for('clientes'))
+
+    @app.route('/editar_cliente/<int:id>', methods=['POST'])
+    def editar_cliente(id):
+        nombre = request.form['nombre']
+        telefono = request.form['telefono']
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("UPDATE clientes SET nombre = %s, telefono = %s WHERE id = %s", (nombre, telefono, id))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            conn.close()
+        return redirect(url_for('clientes'))
+
+    @app.route('/eliminar_cliente/<int:id>')
+    def eliminar_cliente(id):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM clientes WHERE id = %s", (id,))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            conn.close()
+        return redirect(url_for('clientes'))
+
+    # Registrar sub-módulos
+    registrar_rutas_ventas(app, base_layout)
+    registrar_rutas_productos(app, base_layout)
+    registrar_rutas_proveedores(app, base_layout)
+    registrar_rutas_historial_cliente(app, base_layout)
