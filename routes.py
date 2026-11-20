@@ -5,6 +5,7 @@ from ventas import registrar_rutas_ventas
 from productos import registrar_rutas_productos
 from proveedores import registrar_rutas_proveedores
 from historial_cliente import registrar_rutas_historial_cliente
+from informe_ventas import registrar_rutas_informe_ventas
 
 
 def register_routes(app):
@@ -42,6 +43,7 @@ def register_routes(app):
                         <a href="/" class="{'active' if active_page == 'home' else ''}"><i class="fas fa-home me-2"></i> Inicio / Resumen</a>
                         <a href="/productos" class="{'active' if active_page == 'productos' else ''}"><i class="fas fa-box me-2"></i> Productos & Stock</a>
                         <a href="/ventas" class="{'active' if active_page == 'ventas' else ''}"><i class="fas fa-cash-register me-2"></i> Nueva Venta (Caja)</a>
+                        <a href="/informe_ventas" class="{'active' if active_page == 'informe_ventas' else ''}"><i class="fas fa-file-invoice-dollar me-2"></i> Informe Ventas Diarias</a>
                         <a href="/clientes" class="{'active' if active_page == 'clientes' else ''}"><i class="fas fa-users me-2"></i> Clientes (Cta. Cte.)</a>
                         <a href="/proveedores" class="{'active' if active_page == 'proveedores' else ''}"><i class="fas fa-truck me-2"></i> Proveedores & Pedidos</a>
                     </div>
@@ -401,3 +403,4 @@ def register_routes(app):
     registrar_rutas_productos(app, base_layout)
     registrar_rutas_proveedores(app, base_layout)
     registrar_rutas_historial_cliente(app, base_layout)
+    registrar_rutas_informe_ventas(app, base_layout)
