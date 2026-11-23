@@ -13,18 +13,7 @@ def registrar_rutas_informe_ventas(app, base_layout):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        try:
-            cursor.execute('''
-                SELECT v.id, v.fecha, v.tipo_pago, v.total, c.nombre
-                FROM ventas v
-                LEFT JOIN clientes c ON v.cliente_id = c.id
-                WHERE v.fecha LIKE %s
-                ORDER BY v.fecha ASC, v.id ASC
-            ''', (f"{fecha_sel}%",))
-            ventas_dia = cursor.fetchall()
-
-            filas_html = ""
-            total_general_dia = 0.0
+        https://github.com/demicheli08-hue/sistema-pocha/blob/main/database.py
 
             for v in ventas_dia:
                 venta_id, fecha_v, tipo_pago, total_v, cliente_nom = v
